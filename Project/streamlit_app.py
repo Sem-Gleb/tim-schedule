@@ -1,19 +1,20 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Веб-версия генератора учебного графика
+Веб-версия генератора учебного графика (вертикальная, русская версия)
 Запуск: streamlit run streamlit_app.py
 """
 
 import streamlit as st
 import datetime as dt
 from openpyxl import Workbook
-from openpyxl.styles import PatternFill, Font, Alignment
+from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 import io
+import calendar
 import os
+import threading
 
-# Цвета для Excel
 COLORS = {
     "Т": "90EE90",  # Светло-зеленый
     "П": "87CEEB",  # Светло-голубой
@@ -38,7 +39,8 @@ class AcademicYear:
 
 def generate_simple_schedule(year, blocks_weeks, order):
     """Генерирует простое расписание для одного года"""
-    # Создаем простые недели
+    print(f"Генерируем расписание для {year.start_year}-{year.end_year}")
+    
     weeks = []
     start_date = year.start_date()
     
@@ -55,7 +57,6 @@ def generate_simple_schedule(year, blocks_weeks, order):
             'month': week_start.month
         })
     
-    # Создаем простое расписание
     schedule = {}
     current_block_idx = 0
     current_block_days = 0
@@ -64,11 +65,9 @@ def generate_simple_schedule(year, blocks_weeks, order):
         week_key = f"week_{week['week_num']}"
         week_schedule = []
         
-        # Простое распределение по дням недели
         for day_offset in range(7):
             current_date = week['start_date'] + dt.timedelta(days=day_offset)
             
-            # Выходные
             if current_date.weekday() >= 5:
                 week_schedule.append("В")
             elif current_block_idx >= len(order):
@@ -78,30 +77,29 @@ def generate_simple_schedule(year, blocks_weeks, order):
                 week_schedule.append(key)
                 current_block_days += 1
                 
-                # Переходим к следующему блоку
                 if key in blocks_weeks and current_block_days >= blocks_weeks[key] * WEEK_WORKING_DAYS:
                     current_block_idx += 1
                     current_block_days = 0
         
         schedule[week_key] = week_schedule
     
+    print(f"Создано {len(weeks)} недель, {len(schedule)} записей расписания")
     return weeks, schedule
 
 def create_calendar_sheet(ws, year, weeks, schedule, year_num):
     """Создает календарный лист"""
     try:
-        # Заголовок
+        print(f"Создаем календарный лист для года {year_num}")
+        
         ws.merge_cells('A1:Z1')
         ws['A1'] = f"{year_num}. Календарный учебный график Специальность 31.08.51 ФТИЗИАТРИЯ {year.start_year}-{year.end_year} учебный год"
         ws['A1'].font = Font(bold=True, size=12)
         ws['A1'].alignment = Alignment(horizontal='center')
         
-        # Месяцы
         months = ["Сентябрь", "Октябрь", "Ноябрь", "Декабрь", 
                   "Январь", "Февраль", "Март", "Апрель", 
                   "Май", "Июнь", "Июль", "Август"]
         
-        # Группируем недели по месяцам
         month_weeks = {}
         for week in weeks:
             month = week['month']
@@ -109,46 +107,183 @@ def create_calendar_sheet(ws, year, weeks, schedule, year_num):
                 month_weeks[month] = []
             month_weeks[month].append(week)
         
-        # Заголовки месяцев
         row = 3
         col = 2
-        for month_num in range(9, 13):  # Сентябрь-Декабрь
+        for month_num in range(9, 13):
             if month_num in month_weeks:
                 month_name = months[month_num - 9]
                 week_count = len(month_weeks[month_num])
                 if week_count > 1:
                     try:
                         ws.merge_cells(f'{get_column_letter(col)}:{get_column_letter(col + week_count - 1)}')
-                    except:
-                        pass
+                    except Exception as e:
+                        print(f"Ошибка слияния ячеек для {month_name}: {e}")
                 ws[f'{get_column_letter(col)}{row}'] = month_name
                 ws[f'{get_column_letter(col)}{row}'].font = Font(bold=True)
                 ws[f'{get_column_letter(col)}{row}'].alignment = Alignment(horizontal='center')
                 col += week_count
         
-        for month_num in range(1, 9):  # Январь-Август
+        for month_num in range(1, 9):
             if month_num in month_weeks:
                 month_name = months[month_num + 3]
                 week_count = len(month_weeks[month_num])
                 if week_count > 1:
                     try:
                         ws.merge_cells(f'{get_column_letter(col)}:{get_column_letter(col + week_count - 1)}')
-                    except:
-                        pass
+                    except Exception as e:
+                        print(f"Ошибка слияния ячеек для {month_name}: {e}")
                 ws[f'{get_column_letter(col)}{row}'] = month_name
                 ws[f'{get_column_letter(col)}{row}'].font = Font(bold=True)
                 ws[f'{get_column_letter(col)}{row}'].alignment = Alignment(horizontal='center')
                 col += week_count
         
-        # Остальные заголовки и данные...
-        # (код аналогичен предыдущей версии, но без print)
+        row = 4
+        col = 2
+        for month_num in range(9, 13):
+            if month_num in month_weeks:
+                week_count = len(month_weeks[month_num])
+                if week_count > 1:
+                    try:
+                        ws.merge_cells(f'{get_column_letter(col)}:{get_column_letter(col + week_count - 1)}')
+                    except Exception as e:
+                        print(f"Ошибка слияния ячеек для 'Числа': {e}")
+                ws[f'{get_column_letter(col)}{row}'] = "Числа"
+                ws[f'{get_column_letter(col)}{row}'].font = Font(bold=True)
+                ws[f'{get_column_letter(col)}{row}'].alignment = Alignment(horizontal='center')
+                col += week_count
         
-        # Настройка размеров колонок
+        for month_num in range(1, 9):
+            if month_num in month_weeks:
+                week_count = len(month_weeks[month_num])
+                if week_count > 1:
+                    try:
+                        ws.merge_cells(f'{get_column_letter(col)}:{get_column_letter(col + week_count - 1)}')
+                    except Exception as e:
+                        print(f"Ошибка слияния ячеек для 'Числа': {e}")
+                ws[f'{get_column_letter(col)}{row}'] = "Числа"
+                ws[f'{get_column_letter(col)}{row}'].font = Font(bold=True)
+                ws[f'{get_column_letter(col)}{row}'].alignment = Alignment(horizontal='center')
+                col += week_count
+        
+        row = 5
+        col = 2
+        for month_num in range(9, 13):
+            if month_num in month_weeks:
+                for week in month_weeks[month_num]:
+                    date_range = f"{week['start_day']}-{week['end_day']}"
+                    ws[f'{get_column_letter(col)}{row}'] = date_range
+                    ws[f'{get_column_letter(col)}{row}'].alignment = Alignment(horizontal='center')
+                    col += 1
+        
+        for month_num in range(1, 9):
+            if month_num in month_weeks:
+                for week in month_weeks[month_num]:
+                    date_range = f"{week['start_day']}-{week['end_day']}"
+                    ws[f'{get_column_letter(col)}{row}'] = date_range
+                    ws[f'{get_column_letter(col)}{row}'].alignment = Alignment(horizontal='center')
+                    col += 1
+        
+        row = 6
+        col = 2
+        for month_num in range(9, 13):
+            if month_num in month_weeks:
+                week_count = len(month_weeks[month_num])
+                if week_count > 1:
+                    try:
+                        ws.merge_cells(f'{get_column_letter(col)}:{get_column_letter(col + week_count - 1)}')
+                    except Exception as e:
+                        print(f"Ошибка слияния ячеек для 'Нед': {e}")
+                ws[f'{get_column_letter(col)}{row}'] = "Нед"
+                ws[f'{get_column_letter(col)}{row}'].font = Font(bold=True)
+                ws[f'{get_column_letter(col)}{row}'].alignment = Alignment(horizontal='center')
+                col += week_count
+        
+        for month_num in range(1, 9):
+            if month_num in month_weeks:
+                week_count = len(month_weeks[month_num])
+                if week_count > 1:
+                    try:
+                        ws.merge_cells(f'{get_column_letter(col)}:{get_column_letter(col + week_count - 1)}')
+                    except Exception as e:
+                        print(f"Ошибка слияния ячеек для 'Нед': {e}")
+                ws[f'{get_column_letter(col)}{row}'] = "Нед"
+                ws[f'{get_column_letter(col)}{row}'].font = Font(bold=True)
+                ws[f'{get_column_letter(col)}{row}'].alignment = Alignment(horizontal='center')
+                col += week_count
+        
+        row = 7
+        col = 2
+        for month_num in range(9, 13):
+            if month_num in month_weeks:
+                for week in month_weeks[month_num]:
+                    ws[f'{get_column_letter(col)}{row}'] = week['week_num']
+                    ws[f'{get_column_letter(col)}{row}'].alignment = Alignment(horizontal='center')
+                    col += 1
+        
+        for month_num in range(1, 9):
+            if month_num in month_weeks:
+                for week in month_weeks[month_num]:
+                    ws[f'{get_column_letter(col)}{row}'] = week['week_num']
+                    ws[f'{get_column_letter(col)}{row}'].alignment = Alignment(horizontal='center')
+                    col += 1
+        
+        ws['A8'] = f"{year_num}"
+        ws['A8'].font = Font(bold=True, size=14)
+        ws['A8'].alignment = Alignment(horizontal='center', vertical='center')
+        
+        for schedule_row in range(6):
+            row = 8 + schedule_row
+            col = 2
+            
+            for month_num in range(9, 13):
+                if month_num in month_weeks:
+                    for week in month_weeks[month_num]:
+                        week_key = f"week_{week['week_num']}"
+                        if week_key in schedule:
+                            day_idx = min(schedule_row, len(schedule[week_key]) - 1)
+                            activity = schedule[week_key][day_idx] if day_idx < len(schedule[week_key]) else ""
+                        else:
+                            activity = ""
+                        
+                        cell = ws[f'{get_column_letter(col)}{row}']
+                        cell.value = activity
+                        cell.alignment = Alignment(horizontal='center')
+                        
+                        if activity in COLORS:
+                            cell.fill = PatternFill(start_color=COLORS[activity], end_color=COLORS[activity], fill_type="solid")
+                        
+                        col += 1
+            
+            for month_num in range(1, 9):
+                if month_num in month_weeks:
+                    for week in month_weeks[month_num]:
+                        week_key = f"week_{week['week_num']}"
+                        if week_key in schedule:
+                            day_idx = min(schedule_row, len(schedule[week_key]) - 1)
+                            activity = schedule[week_key][day_idx] if day_idx < len(schedule[week_key]) else ""
+                        else:
+                            activity = ""
+                        
+                        cell = ws[f'{get_column_letter(col)}{row}']
+                        cell.value = activity
+                        cell.alignment = Alignment(horizontal='center')
+                        
+                        if activity in COLORS:
+                            cell.fill = PatternFill(start_color=COLORS[activity], end_color=COLORS[activity], fill_type="solid")
+                        
+                        col += 1
+        
         for col in range(1, min(ws.max_column + 1, 20)):
             ws.column_dimensions[get_column_letter(col)].width = 9
         
+        print(f"Календарный лист для года {year_num} создан успешно")
+        
     except Exception as e:
-        st.error(f"Ошибка создания листа: {e}")
+        print(f"Ошибка в create_calendar_sheet: {e}")
+        import traceback
+        traceback.print_exc()
+        ws['A1'] = f"График {year_num} - {year.start_year}-{year.end_year}"
+        ws['A1'].font = Font(bold=True, size=12)
 
 def create_summary_sheet(ws, years_data, blocks_weeks):
     """Создает сводную таблицу"""
@@ -156,170 +291,186 @@ def create_summary_sheet(ws, years_data, blocks_weeks):
         ws['A1'] = "3. Сводные данные"
         ws['A1'].font = Font(bold=True, size=12)
         
-        # Простые данные
+        headers = ["", "Курс 1", "", "", "Курс 2", "", "", "Итого"]
+        subheaders = ["", "сем. 1", "сем. 2", "Всего", "сем. 1", "сем. 2", "Всего", ""]
+        
+        for col, header in enumerate(headers, 1):
+            ws[f'{get_column_letter(col)}2'] = header
+            ws[f'{get_column_letter(col)}2'].font = Font(bold=True)
+        
+        for col, subheader in enumerate(subheaders, 1):
+            ws[f'{get_column_letter(col)}3'] = subheader
+            ws[f'{get_column_letter(col)}3'].font = Font(bold=True)
+        
         activities = ["Т", "ПА", "П", "ГИА", "К", "В"]
         row = 4
         for activity in activities:
             ws[f'A{row}'] = activity
             ws[f'A{row}'].font = Font(bold=True)
-            ws[f'B{row}'] = 5
-            ws[f'C{row}'] = 5
-            ws[f'D{row}'] = 10
+            
+            ws[f'B{row}'] = 5  # сем. 1
+            ws[f'C{row}'] = 5  # сем. 2
+            ws[f'D{row}'] = 10  # всего
+            ws[f'E{row}'] = 5  # сем. 1
+            ws[f'F{row}'] = 5  # сем. 2
+            ws[f'G{row}'] = 10  # всего
+            ws[f'H{row}'] = 20  # итого
+            
             row += 1
+        
+        ws[f'A{row}'] = "Итого"
+        ws[f'A{row}'].font = Font(bold=True)
+        for col in range(2, 9):
+            col_letter = get_column_letter(col)
+            ws[f'{col_letter}{row}'] = 120
             
     except Exception as e:
-        st.error(f"Ошибка создания сводной таблицы: {e}")
+        print(f"Ошибка в create_summary_sheet: {e}")
+        ws['A1'] = "Сводные данные"
+        ws['A1'].font = Font(bold=True, size=12)
+        ws['A3'] = "Данные недоступны"
 
-def save_to_excel(years_data, blocks_weeks):
-    """Сохраняет расписание в Excel и возвращает байты"""
+def save_to_excel(years_data, filename, blocks_weeks):
+    """Сохраняет расписание в Excel"""
     try:
         wb = Workbook()
         wb.remove(wb.active)
         
-        # Создаем листы для каждого года
         for year_idx, (year, weeks, schedule) in enumerate(years_data, 1):
             ws = wb.create_sheet(f"График {year_idx}")
             create_calendar_sheet(ws, year, weeks, schedule, year_idx)
         
-        # Создаем сводную таблицу
         summary_ws = wb.create_sheet("Сводные данные")
         create_summary_sheet(summary_ws, years_data, blocks_weeks)
         
-        # Сохраняем в байты
-        output = io.BytesIO()
-        wb.save(output)
-        output.seek(0)
-        return output.getvalue()
-        
+        wb.save(filename)
+        return True
     except Exception as e:
-        st.error(f"Ошибка при сохранении Excel: {e}")
-        return None
+        print(f"Ошибка при сохранении Excel: {e}")
+        import traceback
+        traceback.print_exc()
+        raise
 
 def main():
-    st.set_page_config(
-        page_title="Генератор учебного графика",
-        layout="wide"
-    )
+    """Главная функция"""
+    st.title("ГЕНЕРАТОР УЧЕБНОГО ГРАФИКА")
     
-    st.title("Генератор учебного графика")
-    st.markdown("**Создатели:** Семенченко Глеб, Спирина Анна, Пугачева Виктория, Ендеров Дмитрий")
+    # 1. Выбор программы
+    with st.expander("1. ПРОГРАММА ОБУЧЕНИЯ"):
+        program = st.radio("Выберите программу", ["Ординатура (2 года)", "Аспирантура (3 года)"])
+        program_value = "ordinatura" if program == "Ординатура (2 года)" else "aspirantura"
     
-    # Боковая панель с настройками
-    with st.sidebar:
-        st.header("Настройки")
-        
-        # Программа обучения
-        program = st.radio(
-            "Программа обучения:",
-            ["Ординатура (2 года)", "Аспирантура (3 года)"]
-        )
-        
-        # Период обучения
-        if program == "Ординатура (2 года)":
-            years_text = "2025/2026 2026/2027"
-        else:
-            years_text = "2025/2026 2026/2027 2027/2028"
-        
-        st.text_input("Учебные годы:", value=years_text, disabled=True)
-        
-        # Блоки занятий
-        st.subheader("Блоки занятий (недели)")
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            t_weeks = st.number_input("Теория (Т):", min_value=1, max_value=50, value=10 if program == "Ординатура (2 года)" else 15)
-            p_weeks = st.number_input("Практика (П):", min_value=1, max_value=50, value=14 if program == "Ординатура (2 года)" else 20)
-            pa_weeks = st.number_input("ПА:", min_value=1, max_value=10, value=1 if program == "Ординатура (2 года)" else 2)
-        
-        with col2:
-            gia_weeks = st.number_input("ГИА:", min_value=1, max_value=10, value=1 if program == "Ординатура (2 года)" else 2)
-            k_weeks = st.number_input("Каникулы (К):", min_value=1, max_value=20, value=2 if program == "Ординатура (2 года)" else 4)
-        
-        # Порядок блоков
-        order = st.text_input("Порядок блоков:", value="Т П ПА ГИА К")
+    # 2. Период обучения
+    with st.expander("2. ПЕРИОД ОБУЧЕНИЯ"):
+        years_default = "2025/2026 2026/2027" if program_value == "ordinatura" else "2025/2026 2026/2027 2027/2028"
+        years = st.text_input("Учебные годы", value=years_default)
     
-    # Основная область
-    col1, col2 = st.columns([2, 1])
+    # 3. Блоки занятий
+    with st.expander("3. БЛОКИ ЗАНЯТИЙ (недели)"):
+        t = st.text_input("Теоретическая подготовка (Т)", value="10" if program_value == "ordinatura" else "15")
+        p = st.text_input("Практика (П)", value="14" if program_value == "ordinatura" else "20")
+        pa = st.text_input("Промежуточная аттестация (ПА)", value="1" if program_value == "ordinatura" else "2")
+        gia = st.text_input("Гос. итоговая аттестация (ГИА)", value="1" if program_value == "ordinatura" else "2")
+        k = st.text_input("Каникулы (К)", value="2" if program_value == "ordinatura" else "4")
     
-    with col1:
-        st.header("Предварительный просмотр")
-        
-        # Показываем настройки
-        st.info(f"""
-        **Настройки:**
-        - Программа: {program}
-        - Теория: {t_weeks} недель
-        - Практика: {p_weeks} недель
-        - ПА: {pa_weeks} недель
-        - ГИА: {gia_weeks} недель
-        - Каникулы: {k_weeks} недель
-        - Порядок: {order}
+    # 4. Порядок блоков
+    with st.expander("4. ПОРЯДОК БЛОКОВ"):
+        order = st.text_input("Последовательность", value="Т П ПА ГИА К")
+    
+    # 5. Файл для сохранения
+    with st.expander("5. ФАЙЛ ДЛЯ СОХРАНЕНИЯ"):
+        out_file = st.text_input("Имя файла", value="учебный_график.xlsx")
+    
+    # Информация
+    with st.expander("ИНФОРМАЦИЯ"):
+        st.markdown("""
+        • График привязан к производственному календарю РФ  
+        • Учитываются выходные и праздничные дни  
+        • Рабочие дни: Т, П, ПА, ГИА, К  
+        • 1 неделя = 5 рабочих дней
         """)
     
-    with col2:
-        st.header("Цветовая схема")
-        for activity, color in COLORS.items():
-            st.markdown(f"**{activity}:** :{color.lower()}[{activity}]")
+    # Кнопка создания
+    if 'is_generating' not in st.session_state:
+        st.session_state.is_generating = False
     
-    # Кнопка генерации
-    if st.button("Создать график", type="primary", use_container_width=True):
-        with st.spinner("Генерируем график..."):
-            try:
-                # Парсинг лет
-                years = []
-                for y in years_text.split():
-                    a, b = y.split("/")
-                    years.append(AcademicYear(int(a), int(b)))
-                
-                # Блоки
-                blocks = {
-                    "Т": t_weeks,
-                    "П": p_weeks,
-                    "ПА": pa_weeks,
-                    "ГИА": gia_weeks,
-                    "К": k_weeks
-                }
-                
-                # Порядок
-                order_list = order.split()
-                
-                # Генерируем расписание
-                years_data = []
-                for year in years:
-                    weeks, schedule = generate_simple_schedule(year, blocks, order_list)
-                    years_data.append((year, weeks, schedule))
-                
-                # Создаем Excel
-                excel_data = save_to_excel(years_data, blocks)
-                
-                if excel_data:
-                    st.success("График успешно создан!")
-                    
-                    # Предлагаем скачать
-                    filename = f"учебный_график_{dt.datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
+    def create_schedule():
+        if st.session_state.is_generating:
+            st.warning("Генерация уже выполняется. Пожалуйста, подождите.")
+            return
+        
+        st.session_state.is_generating = True
+        st.button("СОЗДАТЬ ГРАФИК", disabled=True)
+        
+        try:
+            print("Начинаем создание графика...")
+            
+            # Парсинг лет
+            years_list = []
+            years_text = years.strip()
+            if not years_text:
+                raise ValueError("Не указаны годы обучения")
+            
+            for y in years_text.split():
+                if "/" not in y:
+                    raise ValueError(f"Неверный формат года: {y}. Используйте формат YYYY/YYYY")
+                a, b = y.split("/")
+                years_list.append(AcademicYear(int(a), int(b)))
+            
+            # Парсинг блоков
+            blocks = {}
+            block_inputs = {"Т": t, "П": p, "ПА": pa, "ГИА": gia, "К": k}
+            for key, value in block_inputs.items():
+                value = value.strip()
+                if not value:
+                    raise ValueError(f"Не указано количество недель для {key}")
+                try:
+                    blocks[key] = int(value)
+                except ValueError:
+                    raise ValueError(f"Количество недель должно быть числом для {key}: {value}")
+            
+            # Парсинг порядка
+            order_text = order.strip()
+            if not order_text:
+                raise ValueError("Не указан порядок блоков")
+            order_list = order_text.split()
+            
+            # Проверка файла
+            filename = out_file.strip()
+            if not filename:
+                raise ValueError("Не указан файл для сохранения")
+            
+            # Генерируем расписание
+            years_data = []
+            for i, year in enumerate(years_list):
+                weeks, schedule = generate_simple_schedule(year, blocks, order_list)
+                years_data.append((year, weeks, schedule))
+            
+            # Сохраняем файл
+            if save_to_excel(years_data, filename, blocks):
+                st.success(
+                    f"График успешно создан!\n\n"
+                    f"Файл: {os.path.basename(filename)}\n"
+                    f"Путь: {os.path.dirname(filename)}\n\n"
+                    f"Откройте файл в Excel для просмотра."
+                )
+                with open(filename, "rb") as f:
                     st.download_button(
-                        label="Скачать Excel файл",
-                        data=excel_data,
+                        label="Скачать график",
+                        data=f,
                         file_name=filename,
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     )
-                    
-                    st.balloons()
-                else:
-                    st.error("Ошибка при создании файла")
-                    
-            except Exception as e:
-                st.error(f"Ошибка: {str(e)}")
+            
+        except Exception as e:
+            st.error(f"Ошибка при создании графика:\n\n{str(e)}\n\nПроверьте консоль для подробностей.")
+            import traceback
+            traceback.print_exc()
+        
+        finally:
+            st.session_state.is_generating = False
     
-    # Информация
-    st.markdown("---")
-    st.markdown("""
-    ### Информация
-    - График привязан к производственному календарю РФ
-    - Учитываются выходные и праздничные дни
-    - Рабочие дни: Т, П, ПА, ГИА, К
-    - 1 неделя = 5 рабочих дней
-    """)
+    st.button("СОЗДАТЬ ГРАФИК", on_click=create_schedule, disabled=st.session_state.is_generating)
 
 if __name__ == "__main__":
     main()
